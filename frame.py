@@ -3,47 +3,9 @@ import math
 import numpy as np
 import itertools
 import cv2
-
-def normalizePoints(points, width, height):
-    """ normalize the keypoints of the frame w.r.t size of the frame
-
-    :points: TODO
-    :returns: TODO
-
-    """
-    M = max(width, height)
-    no_points = points.shape[0]
-    T = np.array([[1/M, 0.0, 0.0],
-                  [0.0, 1/M, 0.0],
-                  [0.0, 0.0     , 1.0]])
-    homo_pts = np.hstack((points, np.ones((no_points, 1))))
-    return (T @ homo_pts.T).T[:, 0:2]
-
-def denormalizePoints(points, width, height):
-    """Denormalize the keypoints of the frame
-
-    :points: TODO
-    :width: TODO
-    :height: TODO
-    :returns: TODO
-
-    """
-    M = max(width, height)
-    no_points = points.shape[0]
-    T = np.array([[1/M, 0.0, 0.0],
-                  [0.0, 1/M, 0.0],
-                  [0.0, 0.0     , 1.0]])
-    Tinv = np.linalg.inv(T)
-    homo_pts = np.hstack((points, np.ones((no_points, 1))))
-    return (Tinv @ homo_pts.T).T[:, 0:2]
+import helpers as helper
 
 
-def denormalize(F, width, height):
-    M = max(width, height)
-    T = np.array([[1/M, 0.0, 0.0],
-                  [0.0, 1/M, 0.0],
-                  [0.0, 0.0     , 1.0]])
-    return np.transpose(T) @ F @ T
 
 class Frame(object):
     """ Frame object encompasses keypoints, associated map-points, etc"""
@@ -54,10 +16,11 @@ class Frame(object):
         self.K_inv = np.linalg.inv(K)
         self.pose = np.eye(4)
         if image is not None:
+            self.height, self.width = image.shape[0:2]
             self.id = Frame.newid()
             self.image = image
-            self.M = max(image.shape[0], image.shape[1])
             self.extractFeatures(image)
+            self.map_points = [None]*len(self.keypoints_un)
 
 
     def extractFeatures(self, image):
@@ -67,13 +30,18 @@ class Frame(object):
         :returns: TODO
 
         """
-        orb = cv2.ORB_create(1000)
-        keypoints = orb.detect(image)
-        self.keypoints = self.SSC(keypoints, 500, 0.1, image.shape[1], image.shape[0])
-        _ , self.descriptors = orb.compute(image, self.keypoints)
-        self.keypoints = [[int(keypoint.pt[0]), int(keypoint.pt[1])] for keypoint in self.keypoints]
-        self.keypoints = np.asarray(self.keypoints)
-        self.map_points = np.array([None for keypoint in keypoints])
+        orb = cv2.ORB_create()
+        corners = cv2.goodFeaturesToTrack(np.mean(image, axis=2).astype(np.uint8), 3000, qualityLevel=0.01, minDistance=7)
+        keypoints = [cv2.KeyPoint(x=c[0][0], y=c[0][1], _size=20) for c in corners]
+
+        # self.keypoints = [(pt[0][0], pt[0][1]) for pt in pts]
+        # keypoints = orb.detect(image)
+        # self.keypoints = self.SSC(keypoints, 500, 0.1, image.shape[1], image.shape[0])
+
+        keypoints, self.descriptors = orb.compute(image, keypoints)
+        keypoints =  [(kp.pt[0], kp.pt[1]) for kp in keypoints]
+        # self.keypoints = [[int(keypoint.pt[0]), int(keypoint.pt[1])] for keypoint in self.keypoints]
+        self.keypoints_un = np.asarray(keypoints)
 
     def drawFrame(self, points1, points2):
         """Draw keypoints and tracks on the image
@@ -92,14 +60,6 @@ class Frame(object):
                 cv2.arrowedLine(image,(int(point1[0]), int(point1[1])),(int(point2[0]), int(point2[1])), (0, 0, 255), 1, 8, 0, 0.2)
         return image
 
-    def addMapPoint(self, map_point, keypoint_idx):
-        """Add MapPoint observed in the frame
-
-        :map_point: TODO
-        :returns: TODO
-
-        """
-        self.map_points[keypoint_idx] = map_point
 
     def SSC(self, keypoints, num_ret_points, tolerance, cols, rows):
         """ Adaptive non-maximal suppression to sparsify/distribute the keypoints
@@ -170,5 +130,9 @@ class Frame(object):
 
         return selected_keypoints
 
-
+    @property
+    def keypoints(self):
+        if not hasattr(self, '_kps'):
+            self._kps = helper.normalizePoints(self.keypoints_un, self.K_inv)
+        return self._kps
 

@@ -37,14 +37,13 @@ class Display(object):
         # Define Projection and initial ModelView matrix
         self.scam = pangolin.OpenGlRenderState(
             pangolin.ProjectionMatrix(width, height, 420, 420, width//2, height//2, 0.2, 10000),
-            pangolin.ModelViewLookAt(-2, 2, -2, 0, 0, 0, pangolin.AxisDirection.AxisY))
+            pangolin.ModelViewLookAt(0, -10, -8, 0, 0, 0, 0, -1, 0))
         self.handler = pangolin.Handler3D(self.scam)
 
         # Create Interactive View in window
         self.dcam = pangolin.CreateDisplay()
         self.dcam.SetBounds(0.0, 1.0, 0.0, 1.0, -width/height)
         self.dcam.SetHandler(self.handler)
-        print("Initialized display")
 
     def refresh(self, q):
         """Refresh the display if there is new data
@@ -55,26 +54,25 @@ class Display(object):
         """
         while not q.empty():
             self.message = q.get()
+        if self.message is not None:
+            map_points, poses, colors = self.message
 
-        map_points, poses, colors = self.message
+            gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+            gl.glClearColor(0.0, 0.0, 0.0, 1.0)
+            self.dcam.Activate(self.scam)
 
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        gl.glClearColor(0.0, 0.0, 0.0, 1.0)
-        self.dcam.Activate(self.scam)
+            if poses is not None:
+                if poses.shape[0] >= 2:
+                    gl.glColor3f(0.0, 1.0, 0.0)
+                    pangolin.DrawCameras(poses[0:-1, :])
+                    gl.glColor3f(1.0, 1.0, 0.0)
+                    pangolin.DrawCameras(poses[-1:, :])
 
-        if poses is not None:
-            if poses.shape[0] >= 2:
-                gl.glColor3f(0.0, 1.0, 0.0)
-                pangolin.DrawCameras(poses[0:-1, :])
-            if poses.shape[0] >= 1:
-                gl.glColor3f(1.0, 1.0, 0.0)
-                pangolin.DrawCameras(poses[-1:, :])
-
-        if map_points is not None and colors is not None:
-            if map_points.shape[0] != 0:
-                gl.glPointSize(3)
-                gl.glColor3f(1.0, 0.0, 0.0)
-                pangolin.DrawPoints(map_points, colors)
+            if map_points is not None and colors is not None:
+                if map_points.shape[0] != 0:
+                    gl.glPointSize(3)
+                    gl.glColor3f(1.0, 0.0, 0.0)
+                    pangolin.DrawPoints(map_points, colors)
 
         pangolin.FinishFrame()
 

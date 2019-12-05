@@ -1,41 +1,91 @@
 import numpy as np
 import frame as fm
 
-def normalizePoints(points2d, width, height):
+def camera2(E):
+    U,S,V = np.linalg.svd(E)
+    m = S[:2].mean()
+    E = U.dot(np.array([[m,0,0], [0,m,0], [0,0,0]])).dot(V)
+    U,S,V = np.linalg.svd(E)
+    W = np.array([[0,-1,0], [1,0,0], [0,0,1]])
+
+    if np.linalg.det(U.dot(W).dot(V))<0:
+        W = -W
+
+    M2s = np.zeros([3,4,4])
+    M2s[:,:,0] = np.concatenate([U.dot(W).dot(V), U[:,2].reshape([-1, 1])/abs(U[:,2]).max()], axis=1)
+    M2s[:,:,1] = np.concatenate([U.dot(W).dot(V), -U[:,2].reshape([-1, 1])/abs(U[:,2]).max()], axis=1)
+    M2s[:,:,2] = np.concatenate([U.dot(W.T).dot(V), U[:,2].reshape([-1, 1])/abs(U[:,2]).max()], axis=1)
+    M2s[:,:,3] = np.concatenate([U.dot(W.T).dot(V), -U[:,2].reshape([-1, 1])/abs(U[:,2]).max()], axis=1)
+    return M2s
+
+def hamming_distance(a, b):
+    r = (1 << np.arange(8))[:,None]
+    return np.count_nonzero((np.bitwise_xor(a,b) & r) != 0)
+
+
+def recoverPose(E, pts1, pts2, K, width, height):
+    '''
+    Estimate all possible M2 and return the correct M2 and 3D points P
+    :param pred_pts1:
+    :param pred_pts2:
+    :param intrinsics:
+    :param M:
+    :return: M2, the extrinsics of camera 2
+                     C2, the 3x4 camera matrix
+                     P, 3D points after triangulation (Nx3)
+    '''
+
+    M1 = np.eye(3)
+    C1 = K @ np.hstack((M1, np.zeros((3, 1))))
+    M2_list = camera2(E)
+    P = []
+    M2 = []
+    min_negative_count = np.inf
+    for i in range(M2_list.shape[-1]):
+        M2_inst = M2_list[:, :, i]
+        C2_inst = K @ M2_inst
+
+        W_inst, err = triangulate(C1, pts1, C2_inst, pts2)
+        negative_count = np.sum(W_inst[:, -1] < 0)
+        if np.min(W_inst[:, -1]) > 0:
+            P = W_inst
+            M2 = M2_inst
+    C2 = K @ M2
+    R = M2[0:3, 0:3]
+    t = M2[0:3, 3]
+    return R, t, P
+
+def normalizePoints(points, Kinv):
     """ normalize the keypoints of the frame w.r.t size of the frame
 
     :points: TODO
     :returns: TODO
 
     """
-    M = max(width, height)
     no_points = points.shape[0]
-    T = np.array([[1/M, 0.0, 0.0],
-                  [0.0, 1/M, 0.0],
-                  [0.0, 0.0     , 1.0]])
     homo_pts = np.hstack((points, np.ones((no_points, 1))))
-    return (T @ homo_pts.T).T[:, 0:2]
-
-def denormalizePoints(points2d, width, height):
-    """Denormalize the keypoints of the frame
+    return (Kinv @ homo_pts.T).T[:, 0:2]
+def denormalizePoints(points, K):
+    """denormalize the keypoints
 
     :points: TODO
-    :width: TODO
-    :height: TODO
+    :K: TODO
     :returns: TODO
 
     """
-    M = max(width, height)
     no_points = points.shape[0]
-    T = np.array([[1/M, 0.0, 0.0],
-                  [0.0, 1/M, 0.0],
-                  [0.0, 0.0     , 1.0]])
-    Tinv = np.linalg.inv(T)
     homo_pts = np.hstack((points, np.ones((no_points, 1))))
-    return (Tinv @ homo_pts.T).T[:, 0:2]
-
+    return (K @ homo_pts.T).T[:, 0:2]
 def triangulate(C1, pts1, C2, pts2):
-    # Replace pass by your implementation
+    """TODO: Docstring for triangulate.
+
+    :C1: TODO
+    :pts1: TODO
+    :C2: TODO
+    :pts2: TODO
+    :returns: 3D world coordinates, ReprojectionError
+
+    """
     no_points = pts1.shape[0]
     p1_c1 = C1[0, :][:, None]
     p2_c1 = C1[1, :][:, None]
@@ -69,24 +119,24 @@ def triangulate(C1, pts1, C2, pts2):
 
     return W[:, 0:3], err
 
-def projectPoints(points3d, pose, K, width, height):
+def projectPoints(points3d, pose, width, height):
     """Project the points through projection matrix
 
-    :points3d: TODO
-    :R: TODO
-    :t: TODO
+    :points3d:
+    :pose: TODO
     :width: TODO
     :height: TODO
-    :returns: TODO
+    :returns: Normalized image coordinates
 
     """
-    points3d = np.asarray([point3d.point for point3d in points3d])
+    points3d = np.asarray(points3d)
+    if len(points3d.shape) == 1:
+        points3d = points3d[..., np.newaxis].T
     P = pose[0:3, :]
 
     points4d = np.hstack((points3d, np.ones((points3d.shape[0], 1))))
     pts_proj = (P @ points4d.T).T
     pts_proj = (pts_proj/pts_proj[:, -1][:, None])[:, 0:2]
-    pts_proj = fm.denormalizePoints(pts_proj, width, height)
 
     mask1 = np.logical_and((pts_proj[:, 0] > 0), (pts_proj[:, 0] < height))
     mask2 = np.logical_and((pts_proj[:, 1] > 0), (pts_proj[:, 1] < width))
