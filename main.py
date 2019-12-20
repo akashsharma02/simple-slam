@@ -1,5 +1,6 @@
 import os
 import sys
+import argparse
 import numpy as np
 np.set_printoptions(suppress=True)
 import time
@@ -14,7 +15,7 @@ from slam_map import SlamMap, SlamPoint
 
 
 class Slam(object):
-    """Main functional class containing the slamMap"""
+    """Main functional class containing the SlamMap"""
     def __init__(self, K, width, height):
         self.slam_map = SlamMap()
         self.K = K
@@ -192,33 +193,30 @@ class Slam(object):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(" Usage: main.py '<video-file>'");
-        exit(-1)
+    parser = argparse.ArgumentParser(description="Simple slam pipeline")
+    parser.add_argument("-i", "--input", required=True, help="Input video file")
+    parser.add_argument("-f", "--focal-length", type=int, required=True, help="Estimated focal length for scale initialization")
 
-    v_capture = cv2.VideoCapture(sys.argv[1])
+    args = parser.parse_args()
 
+    v_capture = cv2.VideoCapture(args.input)
     if v_capture.isOpened():
         width   = int(v_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
         height  = int(v_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps     = v_capture.get(cv2.CAP_PROP_FPS)
         no_frames= int(v_capture.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        print(width, height, fps)
-
         if width > 1024:
             aspect = 1024/width
             height = int(height * aspect)
             width  = 1024
 
-        print(width, height, fps)
+        print("Video parameters: width {}, height {}, fps {}".format(width, height, fps))
 
-    focal_length = 1
-    if len(sys.argv) >= 3:
-        focal_length = int(sys.argv[2])
-
-    # TODO: intrinsic parameters for the camera (better way)?
-    K = np.array([[focal_length, 0.0, width//2], [0.0, focal_length, height//2], [0.0, 0.0, 1.0]])
+    focal_length = args.focal_length
+    K = np.array([[focal_length, 0.0,  width//2],
+                  [0.0, focal_length, height//2],
+                  [0.0,          0.0,      1.0]])
 
     # Initialize Slam instance
     slam = Slam(K, width, height)
