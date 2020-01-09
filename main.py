@@ -260,6 +260,8 @@ if __name__ == "__main__":
         else:
             break
         i += 1
-
+    disp.finish()
     capture.release()
     cv2.destroyAllWindows()
+    cv2.waitKey(0)
+

@@ -88,3 +88,14 @@ class Display(object):
         poses = np.asarray([np.linalg.inv(frame.pose) for frame in slam_map.frames])
         colors = np.asarray([point.color/256.0 for point in slam_map.points])
         self.q.put((points, poses, colors))
+
+    def finish(self):
+        """TODO: Docstring for finish.
+
+        :returns: TODO
+
+        """
+        if self.viewer_process.is_alive:
+            self.viewer_process.terminate()
+            self.viewer_process.join(timeout=0)
+
