@@ -1,4 +1,4 @@
-# simple_slam
+# simple-slam
 
 Simple SLAM pipeline that creates a point cloud based map from a video input.
 This was implemented as part of a course project to understand and implement the data association and backend optimization of SLAM
