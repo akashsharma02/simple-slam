@@ -1,25 +1,19 @@
-#!/usr/bin/env python
-
-import argparse
 import os
 import sys
-import time
-
-import cv2
+import argparse
 import numpy as np
+np.set_printoptions(suppress=True)
+import time
 import skimage
+import cv2
 
-import frame as fm
 import helpers as helper
+import frame as fm
 from display import Display
 from slam_map import SlamMap, SlamPoint
 
-np.set_printoptions(suppress=True)
-
-
 class Slam(object):
     """Main functional class containing the SlamMap"""
-
     def __init__(self, K, width, height):
         self.slam_map = SlamMap()
         self.K = K
@@ -27,9 +21,7 @@ class Slam(object):
         self.height = height
 
     def matchFrame(self, frame1, frame2):
-        """ Matches frame1 and frame2
-        :frame1:
-        :frame2:
+        """TODO: Docstring for matchFrame.
         :returns: TODO
 
         """
@@ -55,12 +47,10 @@ class Slam(object):
         frame1_pts_un = frame1.keypoints_un[match_idx1, :]
         frame2_pts_un = frame2.keypoints_un[match_idx2, :]
 
-        F, inlier_mask = cv2.findFundamentalMat(
-            frame1_pts_un, frame2_pts_un, cv2.RANSAC, 0.1, 0.99)
+        F, inlier_mask = cv2.findFundamentalMat(frame1_pts_un, frame2_pts_un, cv2.RANSAC, 0.1, 0.99)
         E = self.K.T @ F @ self.K
         inlier_mask = inlier_mask.astype(bool).squeeze()
-        print("Matches: matches = {}, inliers = {}".format(
-            len(matches), inlier_mask.shape[0]))
+        print("Matches: matches = {}, inliers = {}".format(len(matches), inlier_mask.shape[0]))
         print("Fundamental matrix: \n{}\n".format(F))
 
         _, R, t, _ = cv2.recoverPose(E, frame1_pts_un, frame2_pts_un, self.K)
@@ -69,18 +59,17 @@ class Slam(object):
         pose[0:3, 3] = t.squeeze()
         return pose, match_idx1[inlier_mask], match_idx2[inlier_mask]
 
+
     def searchByProjection(self, curr_frame):
         """TODO: Docstring for search.
         :returns: TODO
 
         """
         map_points = [p.point for p in self.slam_map.points]
-        proj_points, mask = helper.projectPoints(
-            map_points, curr_frame.pose, self.width, self.height)
+        proj_points, mask = helper.projectPoints(map_points, curr_frame.pose, self.width, self.height)
         proj_points = helper.denormalizePoints(proj_points, self.K)
         # obtain projection point descriptors for matching
-        proj_keypoints = [cv2.KeyPoint(
-            x=proj_point[0], y=proj_point[1], _size=10) for proj_point in proj_points]
+        proj_keypoints = [cv2.KeyPoint(x=proj_point[0], y=proj_point[1], _size=10) for proj_point in proj_points]
         print(len(proj_keypoints))
         orb = cv2.ORB_create(1000)
         _, proj_descriptors = orb.compute(curr_frame.image, proj_keypoints)
@@ -138,31 +127,26 @@ class Slam(object):
         curr_frame.pose = relative_pose @ prev_frame.pose
         print("Previous frame pose: \n{}\n".format(prev_frame.pose))
         print("Relative pose: \n{}\n".format(relative_pose))
-        print("Current Pose before optimize: \n{}\n".format(
-            np.linalg.inv(curr_frame.pose)))
+        print("Current Pose before optimize: \n{}\n".format(np.linalg.inv(curr_frame.pose)))
         P1 = prev_frame.pose[0:3, :]
         P2 = curr_frame.pose[0:3, :]
 
         # If a point has been observed in previous frame, add a corresponding observation even in the current frame
         for i, idx in enumerate(match_idx1):
             if prev_frame.map_points[idx] is not None and curr_frame.map_points[match_idx2[i]] is None:
-                prev_frame.map_points[idx].addObservation(
-                    curr_frame, match_idx2[i])
+                prev_frame.map_points[idx].addObservation(curr_frame, match_idx2[i])
 
         # If the map contains points
         sbp_count = 0
         if len(self.slam_map.points) > 0:
             # Optimize the pose only by keeping the map_points fixed
-            reproj_error = self.slam_map.optimize(
-                local_window=2, fix_points=True)
+            reproj_error = self.slam_map.optimize(local_window = 2, fix_points=True)
             print("Reprojection error after pose optimize: {}".format(reproj_error))
             # proj_matches, sbp_count = self.searchByProjection(curr_frame)
 
         # Triangulate only those points that were not found by searchByProjection (innovative points)
-        points3d, _ = helper.triangulate(
-            P1, prev_frame.keypoints[match_idx1], P2, curr_frame.keypoints[match_idx2])
-        remaining_point_mask = np.array(
-            [curr_frame.map_points[i] is None for i in match_idx2])
+        points3d, _ = helper.triangulate(P1, prev_frame.keypoints[match_idx1], P2, curr_frame.keypoints[match_idx2])
+        remaining_point_mask = np.array([curr_frame.map_points[i] is None for i in match_idx2])
 
         add_count = 0
         for i, point3d in enumerate(points3d):
@@ -176,34 +160,28 @@ class Slam(object):
             if point1[2] < 0 and point2[2] < 0:
                 continue
 
-            proj_point1, _ = helper.projectPoints(
-                point3d, prev_frame.pose, self.width, self.height)
-            proj_point2, _ = helper.projectPoints(
-                point3d, curr_frame.pose, self.width, self.height)
+            proj_point1, _ = helper.projectPoints(point3d, prev_frame.pose, self.width, self.height)
+            proj_point2, _ = helper.projectPoints(point3d, curr_frame.pose, self.width, self.height)
             # print("Proj points", proj_point1, proj_point2)
             # print("Frame keypoints", prev_frame.keypoints[match_idx1[i]], curr_frame.keypoints[match_idx2[i]])
-            err1 = np.sum(
-                np.square(proj_point1-prev_frame.keypoints[match_idx1[i]]))
-            err2 = np.sum(
-                np.square(proj_point2-curr_frame.keypoints[match_idx2[i]]))
+            err1 = np.sum(np.square(proj_point1-prev_frame.keypoints[match_idx1[i]]))
+            err2 = np.sum(np.square(proj_point2-curr_frame.keypoints[match_idx2[i]]))
             # print(err1, err2)
             if err1 > 1 or err2 > 1:
                 continue
 
-            color = image[int(np.round(curr_frame.keypoints[match_idx2[i]][1])), int(
-                np.round(curr_frame.keypoints[match_idx2[i]][0]))]
+            color = image[int(np.round(curr_frame.keypoints[match_idx2[i]][1])), int(np.round(curr_frame.keypoints[match_idx2[i]][0]))]
             point = SlamPoint(points3d[i], color)
             point.addObservation(prev_frame, match_idx1[i])
             point.addObservation(curr_frame, match_idx2[i])
             self.slam_map.addPoint(point)
             add_count += 1
 
+
         if frame.id > 4 and frame.id % 5 == 0:
             self.slam_map.optimize()
-        print("Added points in map: {} Search By projection: {}".format(
-            add_count, sbp_count))
-        print("Map: {} points, {} frames".format(
-            len(self.slam_map.points), len(self.slam_map.frames)))
+        print("Added points in map: {} Search By projection: {}".format(add_count, sbp_count))
+        print("Map: {} points, {} frames".format(len(self.slam_map.points), len(self.slam_map.frames)))
         print("Time:    {:.2f} ms".format((time.time()-start_time)*1000.0))
         # wait = input("Enter to continue")
 
@@ -212,27 +190,24 @@ class Slam(object):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simple slam pipeline")
-    parser.add_argument("-i", "--input", required=True,
-                        help="Input video file")
-    parser.add_argument("-f", "--focal-length", type=int, required=True,
-                        help="Estimated focal length for scale initialization")
+    parser.add_argument("-i", "--input", required=True, help="Input video file")
+    parser.add_argument("-f", "--focal-length", type=int, required=True, help="Estimated focal length for scale initialization")
 
     args = parser.parse_args()
 
-    capture = cv2.VideoCapture(args.input)
-    if capture.isOpened():
-        width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = capture.get(cv2.CAP_PROP_FPS)
-        no_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    v_capture = cv2.VideoCapture(args.input)
+    if v_capture.isOpened():
+        width   = int(v_capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height  = int(v_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps     = v_capture.get(cv2.CAP_PROP_FPS)
+        no_frames= int(v_capture.get(cv2.CAP_PROP_FRAME_COUNT))
 
         if width > 1024:
             aspect = 1024/width
             height = int(height * aspect)
-            width = 1024
+            width  = 1024
 
-        print("Video parameters: width {}, height {}, fps {}".format(
-            width, height, fps))
+        print("Video parameters: width {}, height {}, fps {}".format(width, height, fps))
 
     focal_length = args.focal_length
     K = np.array([[focal_length, 0.0,  width//2],
@@ -244,8 +219,8 @@ if __name__ == "__main__":
     disp = Display()
 
     i = 0
-    while capture.isOpened():
-        ret, frame = capture.read()
+    while v_capture.isOpened():
+        ret, frame = v_capture.read()
 
         if ret == True:
             print("---------- Frame {} / {} ----------".format(i, no_frames))
@@ -257,9 +232,7 @@ if __name__ == "__main__":
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
             disp.update(slam.slam_map)
-        else:
-            break
         i += 1
 
-    capture.release()
+    v_capture.release()
     cv2.destroyAllWindows()

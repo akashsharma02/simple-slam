@@ -8,7 +8,7 @@ import helpers as helper
 
 
 class Frame(object):
-    """ Frame object encompasses keypoints, associated map-points, etc"""
+    """ Frame object contains keypoints, associated map-points, etc"""
     newid = itertools.count().__next__
     def __init__(self, image, K):
         """ Detect keypoints and compute descriptors"""
@@ -26,28 +26,22 @@ class Frame(object):
     def extractFeatures(self, image):
         """Extract keypoints and compute descriptors
 
-        :image: TODO
+        :image:
         :returns: TODO
 
         """
         orb = cv2.ORB_create()
-        corners = cv2.goodFeaturesToTrack(np.mean(image, axis=2).astype(np.uint8), 3000, qualityLevel=0.01, minDistance=7)
+        corners = cv2.goodFeaturesToTrack(np.mean(image, axis=2).astype(np.uint8), 3000, qualityLevel=0.02, minDistance=7)
         keypoints = [cv2.KeyPoint(x=c[0][0], y=c[0][1], _size=20) for c in corners]
-
-        # self.keypoints = [(pt[0][0], pt[0][1]) for pt in pts]
-        # keypoints = orb.detect(image)
-        # self.keypoints = self.SSC(keypoints, 500, 0.1, image.shape[1], image.shape[0])
-
         keypoints, self.descriptors = orb.compute(image, keypoints)
         keypoints =  [(kp.pt[0], kp.pt[1]) for kp in keypoints]
-        # self.keypoints = [[int(keypoint.pt[0]), int(keypoint.pt[1])] for keypoint in self.keypoints]
         self.keypoints_un = np.asarray(keypoints)
 
     def drawFrame(self, points1, points2):
         """Draw keypoints and tracks on the image
 
-        :f: TODO
-        :image: TODO
+        :points1:
+        :points2:
         :returns: TODO
 
         """
